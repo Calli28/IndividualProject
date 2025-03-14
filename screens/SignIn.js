@@ -1,88 +1,138 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, Image, TextInput, TouchableOpacity, Animated, Easing } from 'react-native';
+import { StyleSheet, Text, View, Image, TextInput, TouchableOpacity, Animated } from 'react-native';
 import * as Font from 'expo-font';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation } from '@react-navigation/native'; // Import useNavigation
+import { useNavigation } from '@react-navigation/native';
+import GlowingArrowButton from '../assets/arrow.png';
+import bcrypt from 'react-native-bcrypt';
+import LoadingOverlay from '../Components/LoadingOverlay';
+import Notification from '../Components/Notification';
 
 export default function SignInScreen() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [fontLoaded, setFontLoaded] = useState(false);
     const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-    const navigation = useNavigation(); // Get the navigation object
+    const [isLoading, setIsLoading] = useState(false);
+    const [notification, setNotification] = useState({ visible: false, message: '', type: 'success' });
+    const navigation = useNavigation();
 
     // Animation values
-    const logoScale = useRef(new Animated.Value(1)).current;
     const inputOpacity = useRef(new Animated.Value(0)).current;
     const glowAnim = useRef(new Animated.Value(0)).current;
-    const eyeRotation = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
         async function loadFont() {
             await Font.loadAsync({
-                "KrunchBold": require("./fonts/KrunchBold.ttf"),
-                "NotoSerif": require("./fonts/NotoSerif.ttf"),
-                "GlacialIndifference": require("./fonts/GlacialIndifference.otf"),
-                "Poppins": require("./fonts/Poppins.otf"),
+                "KrunchBold": require("../fonts/KrunchBold.ttf"),
+                "NotoSerif": require("../fonts/NotoSerif.ttf"),
+                "GlacialIndifference": require("../fonts/GlacialIndifference.otf"),
+                "Poppins": require("../fonts/Poppins.otf"),
             });
             setFontLoaded(true);
         }
         loadFont();
-    }, []);
 
-    // Logo bounce animation
-    useEffect(() => {
-        Animated.sequence([
-            Animated.timing(logoScale, {
-                toValue: 1.2,
-                duration: 1000,
-                easing: Easing.elastic(1.5),
-                useNativeDriver: true,
-            }),
-            Animated.timing(logoScale, {
-                toValue: 1,
-                duration: 500,
-                useNativeDriver: true,
-            }),
-        ]).start();
-    }, []);
-
-    // Fade-in animation for input fields
-    useEffect(() => {
+        // Fade-in animation for input fields
         Animated.timing(inputOpacity, {
             toValue: 1,
             duration: 1000,
             useNativeDriver: true,
         }).start();
+
+        Animated.loop(
+            Animated.sequence([
+                Animated.timing(glowAnim, {
+                    toValue: 1,
+                    duration: 1000,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(glowAnim, {
+                    toValue: 0,
+                    duration: 1000,
+                    useNativeDriver: true,
+                }),
+            ])
+        ).start();
     }, []);
-
-    // Glow animation for the arrow
-    const glowColor = glowAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: ['rgba(255, 255, 255, 0.2)', 'rgba(255, 255, 255, 1)'],
-    });
-
-    // Eye icon rotation animation
-    const eyeRotate = eyeRotation.interpolate({
-        inputRange: [0, 1],
-        outputRange: ['0deg', '180deg'],
-    });
-
-    const togglePasswordVisibility = () => {
-        setIsPasswordVisible(prev => !prev);
-        Animated.timing(eyeRotation, {
-            toValue: isPasswordVisible ? 0 : 1,
-            duration: 300,
-            useNativeDriver: true,
-        }).start();
-    };
 
     if (!fontLoaded) {
         return null;
     }
 
+    const togglePasswordVisibility = () => {
+        setIsPasswordVisible((prev) => !prev);
+    };
+
     const navigateToSignUp = () => {
-        navigation.navigate('SignUp'); // Navigate to SignUpScreen
+        navigation.navigate('SignUp');
+    };
+
+    const glowColor = glowAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['rgba(255, 255, 255, 0.2)', 'rgba(255, 255, 255, 1)'],
+    });
+
+    const handleSignIn = async () => {
+        try {
+            if (!email || !password) {
+                setNotification({
+                    visible: true,
+                    message: 'Please fill in all fields',
+                    type: 'error'
+                });
+                return;
+            }
+
+            setIsLoading(true);
+            console.log('Attempting to login...');
+
+            const response = await fetch('http://192.168.0.170:3000/api/login', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    email,
+                    password,
+                }),
+            });
+
+            console.log('Response status:', response.status);
+            
+            const data = await response.json();
+            console.log('Response data:', data);
+
+            if (response.ok) {
+                setNotification({
+                    visible: true,
+                    message: 'Login successful!',
+                    type: 'success'
+                });
+                setTimeout(() => {
+                    navigation.reset({
+                        index: 0,
+                        routes: [{ name: 'HomePage' }],
+                    });
+                }, 1500);
+            } else {
+                setNotification({
+                    visible: true,
+                    message: data.message || 'Invalid credentials',
+                    type: 'error'
+                });
+            }
+        } catch (error) {
+            console.error('Login error:', error);
+            setNotification({
+                visible: true,
+                message: 'Login failed: Network error',
+                type: 'error'
+            });
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -91,10 +141,10 @@ export default function SignInScreen() {
             style={styles.container}
         >
             {/* Logo Section */}
-            <Animated.View style={[styles.logoContainer, { transform: [{ scale: logoScale }] }]}>
-                <Image source={require('./assets/circle.png')} style={styles.glowImage} />
-                <Image source={require('./assets/logo.png')} style={styles.logo} />
-            </Animated.View>
+            <View style={styles.logoContainer}>
+                <Image source={require('../assets/circle.png')} style={styles.glowImage} />
+                <Image source={require('../assets/logo.png')} style={styles.logo} />
+            </View>
 
             {/* Title Section */}
             <View style={styles.realityCheckContainer}>
@@ -106,7 +156,7 @@ export default function SignInScreen() {
             {/* Input Fields */}
             <Animated.View style={[styles.formContainer, { opacity: inputOpacity }]}>
                 <View style={styles.inputContainer}>
-                    <Text style={styles.textLabel}>USERNAME</Text>
+                    <Text style={styles.textLabel}>EMAIL</Text>
                     <TextInput
                         style={styles.input}
                         placeholder="Email / Phone"
@@ -131,9 +181,13 @@ export default function SignInScreen() {
                             style={styles.eyeIconContainer}
                             onPress={togglePasswordVisibility}
                         >
-                            <Animated.Image
-                                source={isPasswordVisible ? require('./assets/eye-open.png') : require('./assets/eye-close.png')}
-                                style={[styles.eyeIcon, { transform: [{ rotate: eyeRotate }] }]}
+                            <Image
+                                source={
+                                    isPasswordVisible
+                                        ? require('../assets/eye-open.png')
+                                        : require('../assets/eye-close.png')
+                                }
+                                style={styles.eyeIcon}
                             />
                         </TouchableOpacity>
                     </View>
@@ -144,11 +198,15 @@ export default function SignInScreen() {
                     <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.arrowContainer}>
+                {/* Glowing Arrow Button */}
+                <TouchableOpacity
+                    style={styles.arrowContainer}
+                    onPress={handleSignIn}
+                >
                     <View style={styles.arrowWrapper}>
                         <Text style={styles.getStartedText}>SIGN IN</Text>
                         <Animated.Image
-                            source={require("./assets/arrow.png")}
+                            source={require('../assets/arrow.png')}
                             style={[styles.arrow, { tintColor: glowColor }]}
                         />
                     </View>
@@ -158,10 +216,22 @@ export default function SignInScreen() {
             {/* Sign Up Link */}
             <View style={styles.signUpContainer}>
                 <Text style={styles.signUpText}>NOT A USER?</Text>
-                <TouchableOpacity onPress={navigateToSignUp}> {/* Add onPress */}
+                <TouchableOpacity onPress={navigateToSignUp}>
                     <Text style={styles.signUpLink}>SIGN UP NOW!</Text>
                 </TouchableOpacity>
             </View>
+
+            <LoadingOverlay 
+                visible={isLoading} 
+                message="Signing in..."
+            />
+            
+            <Notification
+                visible={notification.visible}
+                message={notification.message}
+                type={notification.type}
+                onClose={() => setNotification({ ...notification, visible: false })}
+            />
         </LinearGradient>
     );
 }
@@ -175,35 +245,22 @@ const styles = StyleSheet.create({
     },
     logoContainer: {
         position: 'absolute',
-        top: '8%',
-        left: '43%',
+        top: '14%',
+        left: '55%',
         transform: [{ translateX: -50 }, { translateY: -50 }],
-        alignItems: "center",
+        alignItems: 'center',
     },
     realityCheckContainer: {
         position: 'absolute',
         top: '24%',
         left: '45%',
         transform: [{ translateX: -50 }, { translateY: -50 }],
-        alignItems: "center",
-    },
-    arrowContainer: {
-        position: 'absolute',
-        bottom: 40,
-        left: '50%',
-        transform: [{ translateX: -75 }],
-    },
-    arrowWrapper: {
         alignItems: 'center',
-    },
-    arrow: {
-        width: 150,
-        height: 150,
     },
     glowImage: {
         width: 100,
         height: 100,
-        position: "absolute",
+        position: 'absolute',
     },
     logo: {
         width: 100,
@@ -211,25 +268,25 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 48,
-        fontWeight: "600",
-        color: "#3168d8",
-        textShadowColor: "#A020F0",
+        fontWeight: '600',
+        color: '#3168d8',
+        textShadowColor: '#A020F0',
         textShadowOffset: { width: 0, height: 0 },
         textShadowRadius: 10,
     },
     subtitle: {
         fontSize: 48,
-        fontWeight: "600",
-        color: "#7900ff",
-        textShadowColor: "#A020F0",
+        fontWeight: '600',
+        color: '#7900ff',
+        textShadowColor: '#A020F0',
         textShadowOffset: { width: 0, height: 0 },
         textShadowRadius: 10,
         marginBottom: 290,
     },
     tagline: {
         fontSize: 12,
-        color: "#FFFFFF",
-        fontFamily: "NotoSerif",
+        color: '#FFFFFF',
+        fontFamily: 'NotoSerif',
         position: 'absolute',
         top: '28%',
         left: '55%',
@@ -246,8 +303,8 @@ const styles = StyleSheet.create({
         marginBottom: 15,
     },
     textLabel: {
-        fontFamily: "Poppins",
-        color: "#8f8e8e",
+        fontFamily: 'Poppins',
+        color: '#8f8e8e',
         fontSize: 14,
         marginBottom: 5,
         textAlign: 'left',
@@ -284,7 +341,35 @@ const styles = StyleSheet.create({
     forgotPasswordText: {
         color: '#8f8e8e',
         fontSize: 14,
-        fontFamily: "Poppins",
+        fontFamily: 'Poppins',
+    },
+    registerButton: {
+        width: '100%',
+        height: 50,
+        backgroundColor: '#3168d8',
+        borderRadius: 5,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: 20,
+    },
+    registerText: {
+        color: '#FFFFFF',
+        fontSize: 16,
+        fontFamily: 'Poppins',
+    },
+    signUpContainer: {
+        flexDirection: 'row',
+        marginTop: 20,
+    },
+    signUpText: {
+        color: '#8f8e8e',
+        fontFamily: 'Poppins',
+    },
+    signUpLink: {
+        color: '#3168d8',
+        marginLeft: 5,
+        fontWeight: 'bold',
+        fontFamily: 'Poppins',
     },
     arrowContainer: {
         alignItems: 'center',
@@ -305,19 +390,5 @@ const styles = StyleSheet.create({
         textShadowColor: 'white',
         textShadowOffset: { width: 0, height: 0 },
         textShadowRadius: 5,
-    },
-    signUpContainer: {
-        flexDirection: 'row',
-        marginTop: 20,
-    },
-    signUpText: {
-        color: '#8f8e8e',
-        fontFamily: "Poppins",
-    },
-    signUpLink: {
-        color: '#3168d8',
-        marginLeft: 5,
-        fontWeight: 'bold',
-        fontFamily: "Poppins",
     },
 });

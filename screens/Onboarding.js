@@ -12,10 +12,10 @@ export default function OnboardingScreen({ navigation }) { // Receive navigation
     useEffect(() => {
         async function loadFont() {
             await Font.loadAsync({
-                "KrunchBold": require("./fonts/KrunchBold.ttf"),
-                "NotoSerif": require("./fonts/NotoSerif.ttf"),
-                "GlacialIndifference": require("./fonts/GlacialIndifference.otf"),
-                "Poppins": require("./fonts/Poppins.otf"), // Add Poppins font
+                "KrunchBold": require("../fonts/KrunchBold.ttf"),
+                "NotoSerif": require("../fonts/NotoSerif.ttf"),
+                "GlacialIndifference": require("../fonts/GlacialIndifference.otf"),
+                "Poppins": require("../fonts/Poppins.otf"), // Add Poppins font
             });
             setFontLoaded(true);
         }
@@ -80,8 +80,8 @@ export default function OnboardingScreen({ navigation }) { // Receive navigation
             >
                 <View style={{ width }}> {/* First Page */}
                     <View style={styles.logoContainer}>
-                        <Image source={require("./assets/circle.png")} style={styles.glowImage} />
-                        <Image source={require("./assets/logo.png")} style={styles.logo} />
+                        <Image source={require("../assets/circle.png")} style={styles.glowImage} />
+                        <Image source={require("../assets/logo.png")} style={styles.logo} />
                     </View>
 
                     <View style={styles.realityCheckContainer}>
@@ -93,15 +93,15 @@ export default function OnboardingScreen({ navigation }) { // Receive navigation
 
                     <View style={styles.magnifierAndDescriptionContainer}>
                         <Text style={styles.description}>Quickly identify fake news</Text>
-                        <Image source={require("./assets/magnify.png")} style={styles.magnifier} />
+                        <Image source={require("../assets/magnify.png")} style={styles.magnifier} />
                         <Text style={styles.description}>with advanced AI detection</Text>
                     </View>
                 </View>
 
                 <View style={{ width }}> {/* Second Page */}
                     <View style={styles.logoContainer}>
-                        <Image source={require("./assets/circle.png")} style={styles.glowImage} />
-                        <Image source={require("./assets/logo.png")} style={styles.logo} />
+                        <Image source={require("../assets/circle.png")} style={styles.glowImage} />
+                        <Image source={require("../assets/logo.png")} style={styles.logo} />
                     </View>
 
                     <View style={styles.realityCheckContainer}>
@@ -113,15 +113,15 @@ export default function OnboardingScreen({ navigation }) { // Receive navigation
 
                     <View style={styles.magnifierAndDescriptionContainer}>
                         <Text style={styles.description}>Analyze news sources</Text>
-                        <Image source={require("./assets/tick.png")} style={styles.magnifier} />
+                        <Image source={require("../assets/tick.png")} style={styles.magnifier} />
                         <Text style={styles.description}>in real-time for accuracy</Text>
                     </View>
                 </View>
 
                 <View style={{ width }}> {/* Third Page */}
                     <View style={styles.logoContainer}>
-                        <Image source={require("./assets/circle.png")} style={styles.glowImage} />
-                        <Image source={require("./assets/logo.png")} style={styles.logo} />
+                        <Image source={require("../assets/circle.png")} style={styles.glowImage} />
+                        <Image source={require("../assets/logo.png")} style={styles.logo} />
                     </View>
 
                     <View style={styles.realityCheckContainer}>
@@ -134,7 +134,7 @@ export default function OnboardingScreen({ navigation }) { // Receive navigation
                     <View style={styles.magnifierAndDescriptionContainer}>
                         <Text style={styles.description}>Stay informed</Text>
                         <View style={styles.notifImageContainer}>
-                            <Image source={require("./assets/notif.png")} style={styles.notifMagnifier} />
+                            <Image source={require("../assets/notif.png")} style={styles.notifMagnifier} />
                         </View>
                         <Text style={styles.description}>and stop the spread of misinformation</Text>
                     </View>
@@ -143,7 +143,7 @@ export default function OnboardingScreen({ navigation }) { // Receive navigation
                         <View style={styles.arrowWrapper}>
                             <Text style={styles.getStartedText}>GET STARTED</Text>
                             <Animated.Image
-                                source={require("./assets/arrow.png")}
+                                source={require("../assets/arrow.png")}
                                 style={[styles.arrow, { tintColor: glowColor }]}
                             />
                         </View>

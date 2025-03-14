@@ -1,12 +1,58 @@
 {
   "Version": 1,
   "WorkspaceRootPath": "C:\\Users\\Callista Francis\\OneDrive\\Desktop\\RealityCheck\\",
-  "Documents": [],
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Callista Francis\\OneDrive\\Desktop\\RealityCheck\\SignUp.js||{14D17961-FE51-464D-9111-C4AF11D7D99A}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:SignUp.js||{14D17961-FE51-464D-9111-C4AF11D7D99A}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Callista Francis\\OneDrive\\Desktop\\RealityCheck\\SignIn.js||{14D17961-FE51-464D-9111-C4AF11D7D99A}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:SignIn.js||{14D17961-FE51-464D-9111-C4AF11D7D99A}"
+    }
+  ],
   "DocumentGroupContainers": [
     {
       "Orientation": 0,
       "VerticalTabListWidth": 256,
-      "DocumentGroups": []
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "SignUp.js",
+              "DocumentMoniker": "C:\\Users\\Callista Francis\\OneDrive\\Desktop\\RealityCheck\\SignUp.js",
+              "RelativeDocumentMoniker": "SignUp.js",
+              "ToolTip": "C:\\Users\\Callista Francis\\OneDrive\\Desktop\\RealityCheck\\SignUp.js",
+              "RelativeToolTip": "SignUp.js",
+              "ViewState": "AgIAAAEBAAAAAAAAAAAYwAUBAAAWAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
+              "WhenOpened": "2025-03-08T17:05:02.247Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{1c4feeaa-4718-4aa9-859d-94ce25d182ba}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "SignIn.js",
+              "DocumentMoniker": "C:\\Users\\Callista Francis\\OneDrive\\Desktop\\RealityCheck\\SignIn.js",
+              "RelativeDocumentMoniker": "SignIn.js",
+              "ToolTip": "C:\\Users\\Callista Francis\\OneDrive\\Desktop\\RealityCheck\\SignIn.js",
+              "RelativeToolTip": "SignIn.js",
+              "ViewState": "AgIAADMBAAAAAAAAAAAAANIAAAAGAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
+              "WhenOpened": "2025-03-08T14:09:40.69Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
     }
   ]
 }
