@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
@@ -11,6 +12,8 @@ const TfIdf = natural.TfIdf;
 const fetch = require('node-fetch');
 const OpenAI = require('openai');
 const openai = new OpenAI({ apiKey: 'your-api-key' }); // Replace with your API key
+const similarity = require('string-similarity');
+const CredibilityService = require('./services/CredibilityService');
 
 const app = express();
 const parser = new Parser({
@@ -379,10 +382,30 @@ const newsSources = [
     }
 ];
 
-// Browser-like headers to avoid blocking
-const headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+// Configure axios with better defaults
+const axiosInstance = axios.create({
+    timeout: 10000, // 10 second timeout
+    headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Cache-Control': 'max-age=0'
+    },
+    validateStatus: function (status) {
+        return status >= 200 && status < 500; // Accept all responses except 500+ errors
+    }
+});
+
+// Add these headers to mimic a real browser
+const BROWSER_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Cache-Control': 'max-age=0'
 };
 
 // Helper function to extract image URL from various formats
@@ -405,7 +428,7 @@ function extractImageUrl(item) {
 // Helper function to extract all images from HTML content
 async function extractImagesFromContent(url) {
     try {
-        const response = await axios.get(url, { headers, timeout: 5000 });
+        const response = await axiosInstance.get(url);
         const $ = cheerio.load(response.data);
         const images = [];
 
@@ -480,7 +503,7 @@ async function fetchNewsFromRSS(source) {
 
 async function scrapeWebsite(source) {
     try {
-        const response = await axios.get(source.url, { headers, timeout: 10000 });
+        const response = await axiosInstance.get(source.url);
         const $ = cheerio.load(response.data);
         const articles = [];
 
@@ -616,427 +639,133 @@ app.get('/search', async (req, res) => {
     }
 });
 
-// URL checking endpoint with better error handling
-app.post('/check-url', async (req, res) => {
+// Helper function to validate URLs
+function isValidUrl(string) {
     try {
-        const { url } = req.body;
+        new URL(string);
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
 
-        if (!url) {
-            return res.status(400).json({
-                error: 'URL is required',
-                message: 'Please provide a valid URL'
-            });
-        }
+// Helper function to clean HTML content
+function cleanHtml(html) {
+    if (!html) return '';
+    return html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+}
 
-        const response = await axios({
-            method: 'get',
-            url: url,
-            timeout: 10000,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
+// Function to fetch and parse article content
+async function fetchArticleContent(url) {
+    try {
+        console.log('Fetching article from:', url);
+        const response = await axios.get(url, {
+            headers: BROWSER_HEADERS,
+            timeout: 10000
         });
 
         const html = response.data;
-        const $ = cheerio.load(html);
+        const source = new URL(url).hostname;
 
-        // Remove ads and unnecessary content
-        $('script, style, iframe, .ad, .advertisement, .social-share, .related-posts, #sidebar, .sidebar, .comments, .footer, nav, header').remove();
-        
-        // Try to find the main article content using common selectors
-        const articleSelectors = [
-            'article',
-            '[role="article"]',
-            '.article-content',
-            '.post-content',
-            '.entry-content',
-            '.story-content',
-            '.article-body',
-            'main p',
-            '.main-content'
+        // Extract title (try different patterns)
+        let title = '';
+        const titlePatterns = [
+            /<h1[^>]*>([^<]+)<\/h1>/i,
+            /<title[^>]*>([^<]+)<\/title>/i,
+            /<meta[^>]*property="og:title"[^>]*content="([^"]+)"/i
         ];
 
-        let content = '';
-        let mainContentFound = false;
-
-        // Try each selector until we find content
-        for (const selector of articleSelectors) {
-            const articleContent = $(selector).text().trim();
-            if (articleContent.length > 200) { // Minimum content length threshold
-                content = articleContent;
-                mainContentFound = true;
+        for (const pattern of titlePatterns) {
+            const match = html.match(pattern);
+            if (match && match[1]) {
+                title = cleanHtml(match[1]);
                 break;
             }
         }
 
-        // Fallback to paragraphs if no main content found
-        if (!mainContentFound) {
-            content = $('p').map((_, el) => $(el).text().trim())
-                .get()
-                .filter(text => text.length > 50) // Filter out short paragraphs
-                .join(' ');
+        // Extract content (try different patterns)
+        let content = '';
+        const contentPatterns = [
+            /<article[^>]*>(.*?)<\/article>/is,
+            /<div[^>]*class="[^"]*article[^"]*"[^>]*>(.*?)<\/div>/is,
+            /<div[^>]*class="[^"]*content[^"]*"[^>]*>(.*?)<\/div>/is
+        ];
+
+        for (const pattern of contentPatterns) {
+            const match = html.match(pattern);
+            if (match && match[1]) {
+                content = cleanHtml(match[1]);
+                if (content.length > 100) break;
+            }
         }
 
-        // Clean the content
-        content = content
-            .replace(/\s+/g, ' ')
-            .replace(/\[.*?\]/g, '') // Remove square brackets content
-            .replace(/advertisement/gi, '') // Remove advertisement text
-            .trim();
-
-        // Calculate credibility score
-        const credibilityScore = calculateArticleCredibility($, url, content);
-
-        // Generate credibility insights
-        const credibilityInsights = generateCredibilityInsights($, url, content, credibilityScore);
-
-        const response_data = {
-            url,
-            contentPreview: content.slice(0, 2000),
-            content: content.slice(0, 5000),
-            credibilityScore: credibilityScore.total,
-            credibilityBreakdown: credibilityScore.breakdown,
-            insights: credibilityInsights,
-            analysisDate: new Date().toISOString()
+        return {
+            title: title || 'Untitled Article',
+            content: content || 'No content available',
+            source,
+            url
         };
+    } catch (error) {
+        console.error('Error fetching article:', error.message);
+        throw new Error('Failed to fetch article content');
+    }
+}
 
-        res.json(response_data);
+// Main route handler
+app.post('/check-url', async (req, res) => {
+    try {
+        const { url } = req.body;
+        console.log('Checking URL:', url);
+
+        if (!url || !isValidUrl(url)) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Invalid URL' 
+            });
+        }
+
+        // Step 1: Fetch article
+        const article = await fetchArticleContent(url);
+        console.log('Successfully fetched article:', article.title);
+
+        // Step 2: Calculate credibility
+        const credibilityScore = await CredibilityService.calculateCredibilityScore(article);
+        const credibilityLabel = CredibilityService.getCredibilityLabel(credibilityScore);
+        const analysisDetails = CredibilityService.getAnalysisDetails(article);
+
+        // Add CORS headers to allow frontend access
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+
+        // Step 3: Send response with all necessary data
+        res.json({
+            success: true,
+            data: {
+                title: article.title,
+                source: article.source,
+                url: article.url,
+                content: article.content,
+                credibilityScore: credibilityScore,
+                credibilityLabel: credibilityLabel,
+                analysisDetails: analysisDetails,
+                timestamp: new Date().toISOString()
+            }
+        });
 
     } catch (error) {
-        console.error('Error analyzing URL:', error);
+        console.error('Error analyzing article:', error);
         res.status(500).json({
-            error: 'Analysis failed',
-            message: 'Failed to analyze the URL. Please try again.',
-            details: error.message
+            success: false,
+            error: error.message || 'Failed to analyze article'
         });
     }
 });
 
-function calculateArticleCredibility($, url, content) {
-    let score = {
-        total: 0,
-        breakdown: {}
-    };
-
-    // Source credibility (0-25 points)
-    score.breakdown.source = 0;
-    if (url.includes('https')) score.breakdown.source += 5;
-    if (url.match(/\.(gov|edu)$/)) score.breakdown.source += 20;
-    else if (url.match(/\.(org|com)$/)) score.breakdown.source += 10;
-    
-    // Content quality (0-25 points)
-    score.breakdown.content = 0;
-    if (content.length > 1500) score.breakdown.content += 10;
-    if (content.match(/\d{4}/)) score.breakdown.content += 5; // Contains years
-    if (content.match(/[A-Z][a-z]+ [A-Z][a-z]+/)) score.breakdown.content += 5; // Contains proper names
-    if (content.match(/\d+%/)) score.breakdown.content += 5; // Contains percentages
-
-    // Citations and sources (0-25 points)
-    score.breakdown.citations = 0;
-    const citationPhrases = [
-        'according to',
-        'cited by',
-        'reported by',
-        'study shows',
-        'research indicates',
-        'experts say',
-        'sources confirm'
-    ];
-    citationPhrases.forEach(phrase => {
-        if (content.toLowerCase().includes(phrase)) {
-            score.breakdown.citations += 5;
-        }
-    });
-    score.breakdown.citations = Math.min(25, score.breakdown.citations);
-
-    // Factual indicators (0-25 points)
-    score.breakdown.factual = 0;
-    const factualIndicators = [
-        'data shows',
-        'statistics indicate',
-        'survey results',
-        'evidence suggests',
-        'analysis reveals'
-    ];
-    factualIndicators.forEach(indicator => {
-        if (content.toLowerCase().includes(indicator)) {
-            score.breakdown.factual += 5;
-        }
-    });
-    score.breakdown.factual = Math.min(25, score.breakdown.factual);
-
-    // Calculate total score
-    score.total = Math.min(100, Object.values(score.breakdown).reduce((a, b) => a + b, 0));
-
-    return score;
-}
-
-function generateCredibilityInsights($, url, content, score) {
-    const insights = [];
-
-    // Source insights
-    if (score.breakdown.source > 15) {
-        insights.push('High credibility source domain');
-    } else if (score.breakdown.source > 5) {
-        insights.push('Moderate credibility source domain');
-    }
-
-    // Content insights
-    if (score.breakdown.content > 15) {
-        insights.push('Article contains detailed information with dates and statistics');
-    }
-
-    // Citation insights
-    if (score.breakdown.citations > 15) {
-        insights.push('Multiple credible sources cited');
-    } else if (score.breakdown.citations > 5) {
-        insights.push('Some sources referenced');
-    }
-
-    // Factual content insights
-    if (score.breakdown.factual > 15) {
-        insights.push('Strong factual evidence and data presented');
-    } else if (score.breakdown.factual > 5) {
-        insights.push('Contains some factual indicators');
-    }
-
-    // Overall assessment
-    if (score.total >= 80) {
-        insights.push('High credibility article with strong sourcing and evidence');
-    } else if (score.total >= 60) {
-        insights.push('Moderately credible article with some supporting evidence');
-    } else {
-        insights.push('Limited credibility indicators found - verify with additional sources');
-    }
-
-    return insights;
-}
-
-// Helper function to analyze credibility
-async function analyzeCredibility({ title, content, url, keywords }) {
-    try {
-        let score = 70; // Base score
-
-        // URL analysis
-        const domain = new URL(url).hostname;
-        const reputableDomains = [
-            'reuters.com', 'apnews.com', 'bbc.com', 'theguardian.com',
-            'nytimes.com', 'wsj.com', 'bloomberg.com', 'aljazeera.com'
-        ];
-        
-        if (reputableDomains.some(d => domain.includes(d))) {
-            score += 15;
-        }
-
-        // Content analysis
-        if (content) {
-            const contentLength = content.length;
-            if (contentLength > 2000) score += 5;
-            if (contentLength > 4000) score += 5;
-            if (contentLength < 500) score -= 10;
-            if (contentLength < 200) score -= 10;
-        }
-
-        // Title analysis
-        if (title) {
-            const clickbaitPhrases = [
-                'you won\'t believe', 'shocking', 'mind-blowing', 
-                'amazing', 'incredible', 'unbelievable', '...', '!!'
-            ];
-            const hasClickbait = clickbaitPhrases.some(phrase => 
-                title.toLowerCase().includes(phrase)
-            );
-            if (hasClickbait) score -= 15;
-        }
-
-        // Keywords analysis
-        if (keywords && keywords.length >= 5) {
-            score += 5;
-        }
-
-        // Normalize score
-        return Math.max(0, Math.min(100, Math.round(score)));
-    } catch (error) {
-        console.error('Error in credibility analysis:', error);
-        return 50; // Default score on error
-    }
-}
-
-// Helper function to search for related articles
-async function searchNewsAPIs(keyword) {
-    try {
-        const articles = [];
-        const searchPromises = newsSources.slice(0, 5).map(async source => {
-            try {
-                const response = await axios.get(source.url, { 
-                    headers,
-                    timeout: 5000
-                });
-                const $ = cheerio.load(response.data);
-                
-                $('article, .article').each((i, element) => {
-                    const articleText = $(element).text();
-                    if (articleText.toLowerCase().includes(keyword.toLowerCase())) {
-                        articles.push({
-                            title: $(element).find('h1, h2, h3, .title').first().text().trim(),
-                            url: $(element).find('a').first().attr('href'),
-                            source: source.name,
-                            date: new Date().toISOString()
-                        });
-                    }
-                });
-            } catch (error) {
-                console.error(`Error searching ${source.name}:`, error.message);
-            }
-        });
-
-        await Promise.all(searchPromises);
-        return articles.filter(article => article.title && article.url);
-    } catch (error) {
-        console.error('Error in searchNewsAPIs:', error);
-        return [];
-    }
-}
-
-// Add this function at the top level
-function getQuestionType(question) {
-    const q = question.toLowerCase();
-    if (q.startsWith('what')) return 'what';
-    if (q.startsWith('who')) return 'who';
-    if (q.startsWith('when')) return 'when';
-    if (q.startsWith('where')) return 'where';
-    if (q.startsWith('why')) return 'why';
-    if (q.startsWith('how')) return 'how';
-    return 'general';
-}
-
-app.post('/ask-article', async (req, res) => {
-    try {
-        const { question, articleContent } = req.body;
-        
-        if (!question || !articleContent) {
-            return res.status(400).json({
-                error: 'Missing data',
-                message: 'Please provide both question and article content'
-            });
-        }
-
-        // Clean and prepare the content
-        const cleanContent = articleContent
-            .replace(/\s+/g, ' ')
-            .trim();
-
-        // Split content into sentences
-        const sentences = cleanContent
-            .split(/[.!?]+/)
-            .map(s => s.trim())
-            .filter(s => s.length > 20);
-
-        // Prepare question keywords
-        const questionWords = question.toLowerCase()
-            .split(/\W+/)
-            .filter(word => 
-                word.length > 2 && 
-                !['what', 'who', 'when', 'where', 'why', 'how', 'is', 'are', 'was', 'were', 'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of'].includes(word)
-            );
-
-        // Find relevant sentences
-        const relevantSentences = sentences.filter(sentence => {
-            const sentenceWords = sentence.toLowerCase().split(/\W+/);
-            return questionWords.some(word => sentenceWords.includes(word));
-        });
-
-        // Get surrounding context for each relevant sentence
-        const contextSentences = new Set();
-        relevantSentences.forEach(sentence => {
-            const index = sentences.indexOf(sentence);
-            if (index > 0) contextSentences.add(sentences[index - 1]);
-            contextSentences.add(sentence);
-            if (index < sentences.length - 1) contextSentences.add(sentences[index + 1]);
-        });
-
-        // Construct the answer
-        let answer = '';
-        if (relevantSentences.length > 0) {
-            // Determine question type
-            const questionType = question.toLowerCase().split(' ')[0];
-            
-            switch(questionType) {
-                case 'what':
-                    answer = `Based on the article, ${relevantSentences[0]}`;
-                    if (relevantSentences.length > 1) {
-                        answer += ` Furthermore, ${relevantSentences[1]}`;
-                    }
-                    break;
-                    
-                case 'who':
-                    const namePattern = /[A-Z][a-z]+ [A-Z][a-z]+/;
-                    const nameMatch = relevantSentences.find(s => namePattern.test(s));
-                    answer = nameMatch ? 
-                        `The article mentions that ${nameMatch}` : 
-                        `According to the article, ${relevantSentences[0]}`;
-                    break;
-                    
-                case 'when':
-                    const timePattern = /\b\d{4}\b|\b(January|February|March|April|May|June|July|August|September|October|November|December)\b|\b\d{1,2}(st|nd|rd|th)\b/;
-                    const timeMatch = relevantSentences.find(s => timePattern.test(s));
-                    answer = timeMatch ? 
-                        `The article indicates that ${timeMatch}` : 
-                        `According to the article, ${relevantSentences[0]}`;
-                    break;
-                    
-                case 'where':
-                    const locationPattern = /\b[A-Z][a-z]+(,\s*[A-Z][a-z]+)*\b/;
-                    const locationMatch = relevantSentences.find(s => locationPattern.test(s));
-                    answer = locationMatch ? 
-                        `The location mentioned in the article is: ${locationMatch}` : 
-                        `According to the article, ${relevantSentences[0]}`;
-                    break;
-                    
-                case 'why':
-                    const causalPatterns = ['because', 'due to', 'as a result', 'therefore', 'since'];
-                    const causalMatch = relevantSentences.find(s => 
-                        causalPatterns.some(pattern => s.toLowerCase().includes(pattern))
-                    );
-                    answer = causalMatch ? 
-                        `The article explains that ${causalMatch}` : 
-                        `Based on the article, ${relevantSentences.join(' ')}`;
-                    break;
-                    
-                case 'how':
-                    answer = `The article describes that ${relevantSentences.join(' ')}`;
-                    break;
-                    
-                default:
-                    answer = `According to the article: ${relevantSentences.join(' ')}`;
-            }
-        } else {
-            answer = "I couldn't find a specific answer to this question in the article. Try rephrasing your question or check if the article contains this information.";
-        }
-
-        // Calculate confidence score
-        const confidence = Math.min(100, Math.round(
-            (relevantSentences.length * 20) + 
-            (questionWords.length * 10) + 
-            (contextSentences.size * 5)
-        ));
-
-        res.json({
-            question,
-            answer,
-            confidence,
-            relevantExcerpts: Array.from(contextSentences).slice(0, 3),
-            keywordsFound: questionWords,
-            analysisDate: new Date().toISOString()
-        });
-
-    } catch (error) {
-        console.error('Error processing question:', error);
-        res.status(500).json({
-            error: 'Failed to process question',
-            message: error.message
-        });
-    }
+// Add CORS middleware
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    next();
 });
 
 // Error handling middleware

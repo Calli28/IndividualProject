@@ -158,7 +158,7 @@ export default function OnboardingScreen({ navigation }) { // Receive navigation
                     <View style={[styles.indicator, currentPage === 2 && styles.activeIndicator]} />
                 </View>
             )}
-            <StatusBar style="light" />
+            <StatusBar style="light"/>
         </View>
     );
 }
